@@ -21,3 +21,10 @@ LOCAL_SRC_FILES := ImageProcessor.c
 LOCAL_LDLIBS    := -llog -ljnigraphics
 
 include $(BUILD_SHARED_LIBRARY)
+
+#include $(CLEAR_VARS)
+
+#LOCAL_MODULE    := cameraeffectCPP
+#LOCAL_SRC_FILES := ImageProcessor.cpp
+
+#include $(BUILD_SHARED_LIBRARY)

@@ -10,14 +10,11 @@
 
 #include <android/bitmap.h>
 #include <android/log.h>
+#include <android_runtime/AndroidRuntime.h>
 
 #define LOG_TAG "camera_effect"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-
-#ifndef NELEM
-#define NELEM(x) ((int) (sizeof(x) / sizeof((x)[0])))
-#endif
 
 typedef struct{
 	uint8_t red;
@@ -447,7 +444,17 @@ static void convolutionFilter(JNIEnv * env, jobject obj, jobject sourceBitmap, j
 	AndroidBitmap_unlockPixels(env, destBitmap);
 }
 
-void decodeYUV420SPC(int *rgb, unsigned char *yuv420sp, int width, int height) {
+static void decodeYUV420SP(JNIEnv * env, jobject obj, jintArray rgb, jbyteArray yuv420sp, jint width, jint height){
+	jint *p_rgb = (*env)->GetIntArrayElements(env, rgb, 0);
+	jbyte *p_yuv = (*env)->GetByteArrayElements(env, yuv420sp, 0);
+
+	decodeYUV420SP_C((int *) p_rgb, (unsigned char *) p_yuv, (int) width, (int) height);
+
+	(*env)->ReleaseIntArrayElements(env, rgb, p_rgb, 0);
+	(*env)->ReleaseByteArrayElements(env, yuv420sp, p_yuv, 0);
+}
+
+void decodeYUV420SP_C(int *rgb, unsigned char *yuv420sp, int width, int height) {
     int frameSize = width * height;
     int j, yp, uvp, u, v, i, y, y1192, r, g, b;
 
@@ -489,21 +496,9 @@ void decodeYUV420SPC(int *rgb, unsigned char *yuv420sp, int width, int height) {
     }
 }
 
-static void decodeYUV420SP(JNIEnv * env, jobject obj, jintArray rgb, jbyteArray yuv420sp, jint width, jint height){
-	jint *p_rgb = (*env)->GetIntArrayElements(env, rgb, 0);
-	jbyte *p_yuv = (*env)->GetByteArrayElements(env, yuv420sp, 0);
-
-	decodeYUV420SPC((int *) p_rgb, (unsigned char *) p_yuv, (int) width, (int) height);
-
-	(*env)->ReleaseIntArrayElements(env, rgb, p_rgb, 0);
-	(*env)->ReleaseByteArrayElements(env, yuv420sp, p_yuv, 0);
-}
-
-
-
 static const char * classPathName = "com/example/cameraeffect/ImageEffect";
 
-static JNINativeMethod methods[] = {{"reverseBitmap",     "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;)V",     (void*)reverseBitmap},
+static JNIMativeMethod methods[] = {{"reverseBitmap",     "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;)V",     (void*)reverseBitmap},
 		                            {"convertToGray",     "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;)V",     (void*)convertToGray},
 		                            {"reverseAndGray",    "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;)V",     (void*)reverseAndGray},
 		                            {"colorMatrix",       "(Landroid/graphics/Bitmap;Landroid/graphics/Bitmap;[F)V",   (void*)colorMatrix},
@@ -511,37 +506,26 @@ static JNINativeMethod methods[] = {{"reverseBitmap",     "(Landroid/graphics/Bi
 		                            {"decodeYUV420SP",    "([I[BII)V",                                                 (void*)decodeYUV420SP}
 };
 
-static int registerFuncs(JNIEnv * env, const char *className, const JNINativeMethod *gMethods, int numMethods){
-	jclass clazz;
-
-	LOGI("Registering %s natives\n", className);
-	clazz = (*env)->FindClass(env, className);
-	if(clazz == NULL){
-		LOGE("Error: FindClass failed \n");
-		return -1;
-	}
-
-	if((*env)->RegisterNatives(env, clazz, gMethods, numMethods) < 0){
-		LOGE("Error: RegisterNatives failed \n");
-		return -1;
-	}
-
-	return 0;
+static int registerFuns(JNIEnv * env){
+	return android::AndroidRuntime::registerNativeMethods(env, classPathName, methods, NELEM(methods));
 }
 
 jint JNI_OnLoad(JavaVM* vm, void* reversed){
 	JNIEnv* env = NULL;
+	jint result = -1;
 
-	if((*vm)->GetEnv(vm, (void**) &env, JNI_VERSION_1_6) != JNI_OK){
+	if(vm->GetEnv((void**) &env, JNI_VERSION_1_6) != JNI_OK){
 		LOGE("Error: GetEnv failed \n");
-		return -1;
+		goto bail;
 	}
 
-    if(registerFuncs(env, classPathName, methods, NELEM(methods)) < 0){
-    	LOGE("Error: ImageEffect native registration failed\n");
-    	return -1;
-    }
+	assert(env != NULL);
 
-    return JNI_VERSION_1_6;
+    if(registerFuncs(env) < 0){
+    	LOGE("Error: ImageEffect natvie registration failed\n");
+    	goto bail;
+    }
+bail:
+    return result;
 
 }
